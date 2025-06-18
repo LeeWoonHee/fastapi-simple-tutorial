@@ -1,8 +1,9 @@
 from fastapi import FastAPI, HTTPException, Depends
-from pydantic import BaseModel, Field
 import models
 from database import engine, get_db
 from sqlalchemy.orm import Session
+from schemas import Book, BookResponse
+from typing import List
 
 
 app = FastAPI()
@@ -10,17 +11,7 @@ app = FastAPI()
 models.Base.metadata.create_all(bind=engine)
 
 
-class Book(BaseModel):
-    title: str = Field(min_length=1)
-    author: str = Field(min_length=1, max_length=100)
-    description: str = Field(min_length=1, max_length=100)
-    rating: int = Field(gt=-1, lt=101)
-
-
-BOOKS = []
-
-
-@app.get("/")
+@app.get("/", response_model=List[BookResponse])
 def get_book(db: Session = Depends(get_db)):
     return db.query(models.Book).all()
 
@@ -31,7 +22,7 @@ def get_book(db: Session = Depends(get_db)):
 # return {"item_id": item_id, "q": q}
 
 
-@app.post("/")
+@app.post("/", response_model=BookResponse)
 def create_book(book: Book, db: Session = Depends(get_db)):
     book_model = models.Book()
     book_model.title = book.title
@@ -41,12 +32,13 @@ def create_book(book: Book, db: Session = Depends(get_db)):
 
     db.add(book_model)
     db.commit()
-    return book
+    db.refresh(book_model)
+    return book_model
 
 
-@app.put("/{book_id}")
+@app.put("/{book_id}", response_model=BookResponse)
 def update_book(book_id: int, book: Book, db: Session = Depends(get_db)):
-    book_model = db.query(models.Book).filter(models.Book.id == book.id).first()
+    book_model = db.query(models.Book).filter(models.Book.id == book_id).first()
 
     if book_model is None:
         raise HTTPException(
@@ -57,9 +49,11 @@ def update_book(book_id: int, book: Book, db: Session = Depends(get_db)):
     book_model.author = book.author
     book_model.description = book.description
     book_model.rating = book.rating
+
     db.add(book_model)
     db.commit()
-    return book
+    db.refresh(book_model)
+    return book_model
 
 
 @app.delete("/{book_id}")
